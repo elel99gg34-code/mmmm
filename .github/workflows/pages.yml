@@ -57,7 +57,18 @@ jobs:
           cp index.html _site/404.html
           echo "Staged $(find _site -type f | wc -l) files"
 
+      # This is the one step that needs a human first. Without Pages enabled it
+      # fails with "Get Pages site failed", which says nothing useful, so catch
+      # it and print the actual instruction instead.
       - uses: actions/configure-pages@v5
+        id: pages
+        continue-on-error: true
+
+      - name: Explain how to enable Pages
+        if: steps.pages.outcome == 'failure'
+        run: |
+          echo "::error title=GitHub Pages is not enabled::Open Settings → Pages, set Source to \"GitHub Actions\", then re-run this workflow. Nothing else needs changing — the site itself built fine."
+          exit 1
 
       - uses: actions/upload-pages-artifact@v3
         with:
