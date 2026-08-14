@@ -1,0 +1,20 @@
+{
+  "name": "playhub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "15개 게임이 담긴 온라인 게임 허브 — 1대1 대결, 퀴즈 대회, 로비 채팅",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/src/index.js",
+    "dev": "node --watch server/src/index.js",
+    "test": "node tests/run.js",
+    "check": "node --check-all 2>/dev/null || node tests/run.js"
+  },
+  "workspaces": [
+    "server"
+  ]
+}
