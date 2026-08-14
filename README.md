@@ -160,8 +160,9 @@ npm run test:browser   # 실제 크로미움 2개로 온라인 대국까지 검�
 
 ## 배포
 
-- **웹만 (무료, 설정 없음)** — `main`에 푸시하면 GitHub Actions가 GitHub Pages로
+- **웹만 (무료, 설정 없음)** — 기본 브랜치에 푸시하면 GitHub Actions가 GitHub Pages로
   올립니다. 저장소 Settings → Pages → Source를 **GitHub Actions**로 한 번만 바꾸면 됩니다.
+  병합 전에 미리 보고 싶다면 Actions 탭에서 워크플로를 수동 실행하면 됩니다.
 - **온라인 대전까지** — Render / Fly.io / Railway / Docker 중 아무거나. 설정 파일이
   전부 들어 있습니다. 자세한 절차는 **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 

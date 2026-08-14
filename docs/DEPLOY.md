@@ -17,7 +17,12 @@ PlayHub는 두 조각으로 나뉩니다.
 
 1. 저장소 **Settings → Pages**로 갑니다.
 2. **Source**를 **GitHub Actions**로 바꿉니다.
-3. `main`에 푸시합니다. (또는 Actions 탭에서 "Deploy to GitHub Pages"를 수동 실행)
+3. 기본 브랜치에 푸시합니다.
+   아직 병합 전이라면 **Actions 탭 → "Deploy to GitHub Pages" → Run workflow**에서
+   원하는 브랜치를 골라 바로 배포할 수 있습니다.
+
+> 워크플로는 브랜치 이름을 `main`으로 못박지 않고 **저장소의 기본 브랜치**를 기준으로
+> 동작합니다. 기본 브랜치 이름이 무엇이든 그대로 작동합니다.
 
 몇 분 뒤 아래 주소에서 열립니다.
 
