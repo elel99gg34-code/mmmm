@@ -14,6 +14,7 @@ import { openServerDialog } from './server.js';
 import { LIMITS } from '../../../shared/protocol.js';
 
 export function renderTournaments(root) {
+  browsing = false; // always land on your own bracket when opening the page
   if (!isOnline()) {
     mount(root, [
       el('div.page-head', {}, el('div', {}, [
@@ -48,12 +49,26 @@ export function renderTournaments(root) {
   api.listTournaments();
 
   function paint() {
-    mount(body, store.tournament ? tournamentDetail(store.tournament) : tournamentList());
+    // `browsing` lets someone look at the other brackets without leaving their
+    // own — the button that used to do this called leaveTournament(), which
+    // forfeited a running match on a click labelled "see other tournaments".
+    const showList = !store.tournament || browsing;
+    mount(body, showList ? tournamentList(paint) : tournamentDetail(store.tournament, paint));
   }
 
   paint();
+  let lastTourneyId = store.tournament?.id ?? null;
   const unsubscribe = [
-    subscribe(['tournament', 'tournamentList', 'lobby'], paint),
+    subscribe(['tournament', 'tournamentList', 'lobby'], () => {
+      // Joining (or being pulled into) a different bracket should show it,
+      // even if the player happened to be browsing the list at the time.
+      const id = store.tournament?.id ?? null;
+      if (id !== lastTourneyId) {
+        lastTourneyId = id;
+        browsing = false;
+      }
+      paint();
+    }),
     subscribe('connection', () => {
       if (!isOnline()) navigate('#/tournaments', { force: true });
     }),
@@ -63,49 +78,74 @@ export function renderTournaments(root) {
 
 /* ── List ─────────────────────────────────────────────────────────────────── */
 
-function tournamentList() {
+/** True while the player is browsing other brackets from inside their own. */
+let browsing = false;
+
+function tournamentList(repaint) {
   const list = store.tournamentList?.length ? store.tournamentList : store.lobby.tournaments || [];
+
+  // Someone who is already in a tournament needs a way back to it.
+  const backToMine = store.tournament
+    ? el(
+        'button.btn.sm.ghost',
+        {
+          type: 'button',
+          style: { marginBottom: '10px' },
+          onClick: () => {
+            browsing = false;
+            repaint();
+          },
+        },
+        `← 참가 중인 대회로 돌아가기 (${store.tournament.name})`,
+      )
+    : null;
+
   if (!list.length) {
-    return el('div.empty', {}, [
-      el('div.empty-emoji', {}, '🏆'),
-      el('p', {}, '지금 열려 있는 대회가 없습니다.'),
-      el('p.field-hint', {}, '대회를 열면 로비의 모두가 참가할 수 있습니다.'),
-      el('button.btn.sm.primary', { type: 'button', style: { marginTop: '8px' }, onClick: openCreate }, '대회 열기'),
+    return el('div', {}, [
+      backToMine,
+      el('div.empty', {}, [
+        el('div.empty-emoji', {}, '🏆'),
+        el('p', {}, '지금 열려 있는 대회가 없습니다.'),
+        el('p.field-hint', {}, '대회를 열면 로비의 모두가 참가할 수 있습니다.'),
+        el('button.btn.sm.primary', { type: 'button', style: { marginTop: '8px' }, onClick: openCreate }, '대회 열기'),
+      ]),
     ]);
   }
 
-  return el(
-    'div.room-list',
-    {},
-    list.map((entry) => {
-      const meta = getGame(entry.gameId)?.meta;
-      const open = entry.status === 'lobby';
-      return el('div.room-row', {}, [
-        el('div.game-emoji', { text: meta?.emoji || '🏆' }),
-        el('div.room-row-main', {}, [
-          el('strong', { text: entry.name }),
-          el('span', {
-            text: `${meta?.name || entry.gameId} · ${entry.joined}/${entry.size}명${
-              entry.roundLabel ? ` · ${entry.roundLabel} 진행 중` : ''
-            }`,
-          }),
-        ]),
-        entry.status === 'done'
-          ? el('span.chip.good', { text: `🏆 ${entry.championName || '종료'}` })
-          : open
-            ? el('span.chip.good', {}, '모집 중')
-            : el('span.chip.warn', {}, '진행 중'),
-        open
-          ? el('button.btn.sm.primary', { type: 'button', onClick: () => api.joinTournament(entry.id) }, '참가')
+  const rows = list.map((entry) => {
+    const meta = getGame(entry.gameId)?.meta;
+    const open = entry.status === 'lobby';
+    // You can only be in one bracket at a time; the server enforces it too.
+    const alreadyIn = Boolean(store.tournament);
+    return el('div.room-row', {}, [
+      el('div.game-emoji', { text: meta?.emoji || '🏆' }),
+      el('div.room-row-main', {}, [
+        el('strong', { text: entry.name }),
+        el('span', {
+          text: `${meta?.name || entry.gameId} · ${entry.joined}/${entry.size}명${
+            entry.roundLabel ? ` · ${entry.roundLabel} 진행 중` : ''
+          }`,
+        }),
+      ]),
+      entry.status === 'done'
+        ? el('span.chip.good', { text: `🏆 ${entry.championName || '종료'}` })
+        : open
+          ? el('span.chip.good', {}, '모집 중')
+          : el('span.chip.warn', {}, '진행 중'),
+      open && !alreadyIn
+        ? el('button.btn.sm.primary', { type: 'button', onClick: () => api.joinTournament(entry.id) }, '참가')
+        : open && entry.id === store.tournament?.id
+          ? el('span.chip.accent', {}, '참가 중')
           : null,
-      ]);
-    }),
-  );
+    ]);
+  });
+
+  return el('div', {}, [backToMine, el('div.room-list', {}, rows)]);
 }
 
 /* ── Detail + bracket ─────────────────────────────────────────────────────── */
 
-function tournamentDetail(tourney) {
+function tournamentDetail(tourney, repaint) {
   const meta = getGame(tourney.gameId)?.meta;
   const isHost = tourney.hostId === store.me?.id;
   const canStart = isHost && tourney.status === 'lobby' && tourney.players.length >= 2;
@@ -202,8 +242,21 @@ function tournamentDetail(tourney) {
         ]);
 
   return el('div', {}, [
-    el('button.btn.sm.ghost', { type: 'button', style: { marginBottom: '10px' }, onClick: () => api.leaveTournament() },
-      '← 다른 대회 보기'),
+    el(
+      'button.btn.sm.ghost',
+      {
+        type: 'button',
+        style: { marginBottom: '10px' },
+        // Browsing only — leaving is the explicit "나가기" button below, which
+        // confirms first because mid-tournament it counts as a forfeit.
+        onClick: () => {
+          browsing = true;
+          api.listTournaments();
+          repaint();
+        },
+      },
+      '← 다른 대회 둘러보기',
+    ),
     champion,
     header,
     el('div.lobby-grid', {}, [bracket, el('div.side-panel', {}, roster)]),
