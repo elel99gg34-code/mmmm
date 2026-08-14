@@ -24,6 +24,7 @@ import * as minesweeper from '../shared/games/minesweeper.js';
 import * as g2048 from '../shared/games/g2048.js';
 import * as snake from '../shared/games/snake.js';
 import { allowedStarts, canFollow } from '../shared/hangul.js';
+import { QUESTIONS, CATEGORIES } from '../shared/data/quiz-bank.js';
 
 /* ── Registry ─────────────────────────────────────────────────────────────── */
 
@@ -435,6 +436,41 @@ test('questions are drawn deterministically and answers are shuffled', () => {
   assert(JSON.stringify(a.questions) !== JSON.stringify(c.questions), 'different seeds gave the same quiz');
   equal(a.questions.length, 10);
   for (const q of a.questions) assert(q.c >= 0 && q.c <= 3);
+});
+
+test('every question in the bank is well formed', () => {
+  const seen = new Set();
+  QUESTIONS.forEach((item, i) => {
+    const where = `question ${i} ("${item.q?.slice(0, 24)}…")`;
+    assert(typeof item.q === 'string' && item.q.length > 3, `${where}: missing text`);
+    assert(Array.isArray(item.a) && item.a.length === 4, `${where}: needs exactly 4 options`);
+    assert(
+      item.a.every((option) => typeof option === 'string' && option.length > 0),
+      `${where}: has an empty option`,
+    );
+    equal(new Set(item.a).size, 4, `${where}: has duplicate options`);
+    assert(Number.isInteger(item.c) && item.c >= 0 && item.c <= 3, `${where}: bad answer index`);
+    assert(CATEGORIES.includes(item.cat), `${where}: unknown category "${item.cat}"`);
+    assert([1, 2, 3].includes(item.d), `${where}: difficulty must be 1-3`);
+    assert(!seen.has(item.q), `${where}: duplicate question`);
+    seen.add(item.q);
+  });
+  assert(QUESTIONS.length >= 100, `bank is only ${QUESTIONS.length} questions`);
+});
+
+test('shuffling the options carries the answer index with it', () => {
+  // The bank writes the answer first for readability; a match must not.
+  for (const seed of ['a', 'b', 'c', 'd', 'e']) {
+    const built = quiz.buildQuestions(seed, { ...quiz.DEFAULTS, count: 40 });
+    for (const q of built) {
+      const source = QUESTIONS.find((item) => item.q === q.q);
+      assert(source, `built a question that is not in the bank: ${q.q}`);
+      equal(q.a[q.c], source.a[source.c], `seed ${seed}: answer index does not follow the shuffle`);
+      deepEqual([...q.a].sort(), [...source.a].sort(), 'options changed during the shuffle');
+    }
+    const firstIsAnswer = built.filter((q) => q.c === 0).length;
+    assert(firstIsAnswer < built.length, `seed ${seed}: every answer landed in slot 0`);
+  }
 });
 
 test('a fast correct answer beats a slow correct answer', () => {

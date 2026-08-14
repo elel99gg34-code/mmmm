@@ -1,0 +1,19 @@
+{
+  "name": "PlayHub — 15가지 게임이 있는 놀이터",
+  "short_name": "PlayHub",
+  "description": "15가지 게임을 친구와 1대1로. 로비, 방, 퀴즈 대회까지.",
+  "start_url": "../index.html",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#0d1017",
+  "theme_color": "#0d1017",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "./assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

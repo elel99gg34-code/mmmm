@@ -1,0 +1,69 @@
+name: Deploy to GitHub Pages
+
+# Publishes the web client. There is no build step: the client is plain ES
+# modules that import the same rule engines the server uses, so the repository
+# root *is* the site. Everything except online play works from Pages alone.
+#
+# One-time setup: repository Settings → Pages → Source → "GitHub Actions".
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Assemble site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify the rules still pass before publishing them
+        run: node tests/run.js
+
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          # The client is index.html plus the app and the shared engines it
+          # imports. Nothing else needs to be public.
+          cp index.html _site/
+          cp .nojekyll _site/
+          cp -r app _site/
+          cp -r shared _site/
+          # A 404 that serves the app keeps deep links working on Pages.
+          cp index.html _site/404.html
+          echo "Staged $(find _site -type f | wc -l) files"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

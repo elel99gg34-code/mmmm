@@ -1,0 +1,42 @@
+# Fly.io configuration.
+#
+#   fly launch --no-deploy    # once, to pick a name and region
+#   fly deploy
+#
+# Fly terminates TLS for you, so the client connects to
+# wss://<app>.fly.dev/ws with no extra configuration.
+
+app = "playhub"
+primary_region = "nrt"   # Tokyo — closest region for Korean players
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  HOST = "0.0.0.0"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Keep one machine warm so a game invite never lands on a cold start.
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 400
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "4s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

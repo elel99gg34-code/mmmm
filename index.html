@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PlayHub — 15가지 게임이 있는 놀이터</title>
+    <meta
+      name="description"
+      content="오목, 커넥트4, 퀴즈 배틀까지 15가지 게임을 친구와 1대1로. 로비에서 만나고, 방을 만들고, 퀴즈 대회도 열 수 있는 온라인 게임 허브."
+    />
+    <meta name="theme-color" content="#0d1017" />
+    <meta name="color-scheme" content="dark light" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="PlayHub — 15가지 게임이 있는 놀이터" />
+    <meta property="og:description" content="15가지 게임, 1대1 온라인 대결, 퀴즈 대회. 친구와 지금 바로." />
+    <meta property="og:image" content="./app/assets/og.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="./app/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./app/assets/favicon.svg" />
+    <link rel="manifest" href="./app/manifest.webmanifest" />
+    <link rel="stylesheet" href="./app/css/style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+    <header class="topbar">
+      <a class="brand" href="#/" aria-label="PlayHub 홈">
+        <span class="brand-mark" aria-hidden="true">🎲</span>
+        <span class="brand-text">Play<b>Hub</b></span>
+      </a>
+
+      <nav class="topnav" aria-label="주요 메뉴">
+        <a href="#/" data-nav="hub">게임</a>
+        <a href="#/lobby" data-nav="lobby">로비</a>
+        <a href="#/tournaments" data-nav="tournaments">대회</a>
+        <a href="#/help" data-nav="help">도움말</a>
+      </nav>
+
+      <div class="topbar-right">
+        <button
+          class="conn-chip"
+          id="conn-chip"
+          type="button"
+          data-state="offline"
+          aria-live="polite"
+          title="서버 연결 상태"
+        >
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-text">오프라인</span>
+        </button>
+        <button class="icon-btn" id="theme-btn" type="button" title="밝기 전환" aria-label="밝기 전환">◐</button>
+        <button class="profile-chip" id="profile-btn" type="button" title="내 프로필">
+          <span class="profile-avatar" aria-hidden="true">🦊</span>
+          <span class="profile-name">손님</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="main" class="main" tabindex="-1">
+      <div class="boot">
+        <div class="boot-spinner" aria-hidden="true"></div>
+        <p>불러오는 중…</p>
+        <noscript>
+          <p class="boot-noscript">
+            이 사이트는 자바스크립트가 필요합니다. 브라우저에서 자바스크립트를 켜 주세요.
+          </p>
+        </noscript>
+      </div>
+    </main>
+
+    <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+    <div class="modal-root" id="modal-root"></div>
+
+    <script type="module" src="./app/js/main.js"></script>
+  </body>
+</html>

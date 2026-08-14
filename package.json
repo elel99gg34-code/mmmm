@@ -12,9 +12,12 @@
     "start": "node server/src/index.js",
     "dev": "node --watch server/src/index.js",
     "test": "node tests/run.js",
-    "check": "node --check-all 2>/dev/null || node tests/run.js"
+    "test:browser": "node tests/browser.mjs"
   },
   "workspaces": [
     "server"
-  ]
+  ],
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
 }

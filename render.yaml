@@ -1,0 +1,30 @@
+# Render blueprint — https://render.com/docs/blueprint-spec
+#
+# Push this repository to GitHub, then in Render choose
+# "New → Blueprint" and point it at the repo. Render reads this file,
+# builds the service, and gives you an https:// URL. The WebSocket address is
+# the same host with `wss://` and `/ws`, e.g.
+#   https://playhub.onrender.com  ->  wss://playhub.onrender.com/ws
+#
+# The free instance type sleeps when idle; the first visitor after a nap waits
+# a few seconds for it to wake.
+services:
+  - type: web
+    name: playhub
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install --omit=dev
+    startCommand: node server/src/index.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Leave ALLOWED_ORIGINS unset to accept any origin. Set it to your
+      # GitHub Pages URL to restrict who may open a socket, e.g.
+      #   https://<user>.github.io
+      - key: ALLOWED_ORIGINS
+        sync: false

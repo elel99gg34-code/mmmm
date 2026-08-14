@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Engine + server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check the server boots and answers
+        run: |
+          PORT=8123 node server/src/index.js &
+          SERVER_PID=$!
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8123/healthz >/dev/null && break
+            sleep 0.25
+          done
+          curl -sf http://127.0.0.1:8123/healthz | tee /dev/stderr | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:8123/api/games | grep -q '"gomoku"'
+          kill $SERVER_PID
+
+  browser:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        run: npx --yes playwright@1 install --with-deps chromium
+
+      - name: Run browser test
+        run: npx --yes --package playwright@1 node tests/browser.mjs
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: .screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
