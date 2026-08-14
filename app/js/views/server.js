@@ -78,8 +78,10 @@ export function openServerDialog() {
     ],
   });
 
-  // Offer the page's own origin when a server actually answers there.
-  probeSameOrigin().then((ok) => {
+  // Offer the page's own origin when a server actually answers there. This
+  // probe ignores the cache: someone opening this dialog may have started a
+  // server thirty seconds ago.
+  probeSameOrigin({ fresh: true }).then((ok) => {
     if (!ok) return;
     const url = sameOriginServer();
     sameOriginRow.append(

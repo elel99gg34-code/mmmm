@@ -65,21 +65,51 @@ export function sameOriginServer() {
   return `${scheme}://${location.host}/ws`;
 }
 
-/** True when a PlayHub server is answering at this page's own origin. */
-export async function probeSameOrigin(timeoutMs = 2500) {
+const PROBE_KEY = 'playhub.sameorigin';
+/**
+ * How long to trust "there is no server here".
+ *
+ * On a static host (GitHub Pages) the probe 404s, and a 404 prints a console
+ * error no matter how carefully it is caught. Remembering the answer keeps
+ * that to once an hour per browser instead of once per page load. The value is
+ * stored in localStorage, which is already per-origin, so a cached "no" for
+ * a Pages site never suppresses the probe on localhost.
+ */
+const PROBE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * True when a PlayHub server is answering at this page's own origin.
+ * Pass `{ fresh: true }` to ignore the cache — used by the connect dialog, so
+ * someone who just started a local server can find it without waiting an hour.
+ */
+export async function probeSameOrigin({ timeoutMs = 2500, fresh = false } = {}) {
   if (!location.origin || location.origin === 'null' || location.protocol === 'file:') return false;
+
+  if (!fresh) {
+    try {
+      const cached = JSON.parse(storage.getItem(PROBE_KEY) || 'null');
+      if (cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.ok;
+    } catch {
+      /* corrupt entry — fall through and probe */
+    }
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let ok = false;
   try {
     const res = await fetch('./healthz', { signal: controller.signal, cache: 'no-store' });
-    if (!res.ok) return false;
-    const body = await res.json();
-    return body && body.ok === true && typeof body.games === 'number';
+    if (res.ok) {
+      const body = await res.json();
+      ok = Boolean(body && body.ok === true && typeof body.games === 'number');
+    }
   } catch {
-    return false;
+    ok = false;
   } finally {
     clearTimeout(timer);
   }
+  storage.setItem(PROBE_KEY, JSON.stringify({ ok, at: Date.now() }));
+  return ok;
 }
 
 export function savedServer() {
