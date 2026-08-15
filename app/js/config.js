@@ -19,6 +19,7 @@ const STORAGE_KEY = 'playhub.server';
 const PROFILE_KEY = 'playhub.profile';
 const THEME_KEY = 'playhub.theme';
 const SESSION_KEY = 'playhub.session';
+const AUTH_KEY_PREFIX = 'playhub.auth:';
 
 function safeStorage() {
   try {
@@ -168,6 +169,27 @@ export function loadSession() {
 export function saveSession(id) {
   if (id) storage.setItem(SESSION_KEY, id);
   else storage.removeItem(SESSION_KEY);
+}
+
+/* ── Account token ────────────────────────────────────────────────────────── */
+
+/**
+ * The signed session token for a logged-in account.
+ *
+ * Kept per server, because a token minted by one hub means nothing to another
+ * — signing in on a friend's server should not clobber your login on your own.
+ */
+function authKey(serverUrl) {
+  return `${AUTH_KEY_PREFIX}${serverUrl || 'default'}`;
+}
+
+export function loadAuthToken(serverUrl) {
+  return storage.getItem(authKey(serverUrl)) || '';
+}
+
+export function saveAuthToken(serverUrl, token) {
+  if (token) storage.setItem(authKey(serverUrl), token);
+  else storage.removeItem(authKey(serverUrl));
 }
 
 /* ── Theme ────────────────────────────────────────────────────────────────── */

@@ -22,7 +22,9 @@ const EMPTY_ROOM_TTL_MS = 60_000;
 const FINISHED_TOURNEY_TTL_MS = 30 * 60_000;
 
 export class Hub {
-  constructor() {
+  /** @param {{ accounts?: import('./accounts.js').Accounts }} [options] */
+  constructor({ accounts = null } = {}) {
+    this.accounts = accounts;
     this.clients = new Map(); // id -> client
     this.rooms = new Map();
     this.tournaments = new Map();
@@ -55,8 +57,12 @@ export class Hub {
       alive: true,
       ip: meta.ip || '',
       joinedAt: Date.now(),
+      userId: null, // set when signed in to an account
       limiter: new RateLimiter(40, 12),
       chatLimiter: new RateLimiter(6, 1),
+      // Auth is expensive (scrypt) and worth guessing at, so it gets its own,
+      // much tighter budget than ordinary traffic.
+      authLimiter: new RateLimiter(6, 0.2),
     };
     this.clients.set(client.id, client);
     this.stats.connections++;
@@ -76,6 +82,7 @@ export class Hub {
         this.ghosts.set(client.id, {
           name: client.name,
           avatar: client.avatar,
+          userId: client.userId,
           roomId: room.id,
           tournamentId: client.tournamentId,
           expiresAt: Date.now() + GHOST_TTL_MS,
@@ -161,7 +168,14 @@ export class Hub {
     const handler = this.routes[msg.t];
     if (!handler) return this.error(client, `알 수 없는 요청입니다: ${msg.t}`);
     try {
-      handler.call(this, client, msg);
+      // Auth handlers are async (scrypt); everything else is synchronous.
+      const result = handler.call(this, client, msg);
+      if (result && typeof result.catch === 'function') {
+        result.catch((err) => {
+          log.error('async handler rejected', { t: msg.t, err: err.stack });
+          this.error(client, '서버에서 오류가 발생했습니다.');
+        });
+      }
     } catch (err) {
       log.error('handler threw', { t: msg.t, err: err.stack });
       this.error(client, '서버에서 오류가 발생했습니다.');
@@ -174,6 +188,12 @@ export class Hub {
       [C2S.HELLO]: this.onHello,
       [C2S.PING]: this.onPing,
       [C2S.PROFILE]: this.onProfile,
+      [C2S.AUTH_REGISTER]: this.onRegister,
+      [C2S.AUTH_LOGIN]: this.onLogin,
+      [C2S.AUTH_LOGOUT]: this.onLogout,
+      [C2S.AUTH_PASSWORD]: this.onChangePassword,
+      [C2S.PROFILE_GET]: this.onProfileGet,
+      [C2S.LEADERBOARD]: this.onLeaderboard,
       [C2S.LOBBY_SUB]: this.onLobbySubscribe,
       [C2S.LOBBY_UNSUB]: this.onLobbyUnsubscribe,
       [C2S.CHAT]: this.onChat,
@@ -198,10 +218,27 @@ export class Hub {
 
   /* ── Identity ───────────────────────────────────────────────────────────── */
 
+  /**
+   * A display name a guest is allowed to use.
+   *
+   * Registered usernames are reserved even while their owner is offline —
+   * otherwise anyone could sit in the lobby wearing someone else's name.
+   */
+  pickGuestName(requested) {
+    const wanted = sanitizeName(requested);
+    if (wanted && !this.accounts?.isNameTaken(wanted)) return { name: wanted, reserved: false };
+    for (let i = 0; i < 60; i++) {
+      const candidate = guestName(this.guestCounter++);
+      if (!this.accounts?.isNameTaken(candidate)) return { name: candidate, reserved: Boolean(wanted) };
+    }
+    return { name: `손님${Date.now().toString(36).slice(-4)}`, reserved: Boolean(wanted) };
+  }
+
   onHello(client, msg) {
     if (client.name) return this.error(client, '이미 접속했습니다.');
 
-    client.name = sanitizeName(msg.name) || guestName(this.guestCounter++);
+    const guest = this.pickGuestName(msg.name);
+    client.name = guest.name;
     client.avatar = clampInt(msg.avatar, 0, AVATARS.length - 1, Math.floor(Math.random() * AVATARS.length));
 
     // Resume a dropped session if the token still points at a live seat.
@@ -213,6 +250,7 @@ export class Hub {
       client.name = ghost.name || client.name;
       client.avatar = ghost.avatar ?? client.avatar;
       client.tournamentId = ghost.tournamentId ?? null;
+      client.userId = ghost.userId ?? null;
       this.clients.set(client.id, client);
       this.ghosts.delete(msg.resume);
 
@@ -222,6 +260,15 @@ export class Hub {
         resumedRoom = room;
         this.systemChat(room, `${client.name} 님이 다시 연결되었습니다.`);
       }
+    }
+
+    // A valid account token outranks anything else: it decides the identity.
+    const account = msg.token && this.accounts ? this.accounts.verifyToken(msg.token) : null;
+    if (account) {
+      client.userId = account.id;
+      client.name = account.username;
+      client.avatar = account.avatar;
+      this.accounts.touch(account.id);
     }
 
     this.send(client, S2C.WELCOME, {
@@ -234,25 +281,45 @@ export class Hub {
       limits: LIMITS,
       avatars: AVATARS,
       resumed: Boolean(resumedRoom),
+      accountsEnabled: Boolean(this.accounts),
+      user: account ? this.accounts.selfProfile(account.id) : null,
+      // Tell the client its saved token is dead so it can clear it and
+      // show the login form instead of silently staying a guest.
+      tokenRejected: Boolean(msg.token && this.accounts && !account),
     });
 
+    if (guest.reserved && !account) {
+      this.notice(client, '그 이름은 가입된 계정이 사용 중입니다. 손님 이름으로 접속했습니다.', 'info');
+    }
     if (resumedRoom) {
       this.broadcastRoom(resumedRoom);
     }
-    log.debug('client hello', { id: client.id, name: client.name });
+    log.debug('client hello', { id: client.id, name: client.name, account: Boolean(account) });
     this.broadcastLobby();
   }
 
-  onPing(client, msg) {
-    // `echo` lets the client compute round-trip time and its clock offset.
-    this.send(client, S2C.PONG, { serverNow: Date.now(), echo: msg.echo ?? null });
+  /* ── Accounts ───────────────────────────────────────────────────────────── */
+
+  /** Guard shared by every auth route. Returns false when it already replied. */
+  authReady(client) {
+    if (!this.accounts) {
+      this.send(client, S2C.AUTH_ERROR, { message: '이 서버는 계정 기능을 사용하지 않습니다.' });
+      return false;
+    }
+    if (!client.authLimiter.take()) {
+      this.send(client, S2C.AUTH_ERROR, { message: '시도가 너무 잦습니다. 잠시 후 다시 해 주세요.' });
+      return false;
+    }
+    return true;
   }
 
-  onProfile(client, msg) {
-    const name = sanitizeName(msg.name);
-    if (!name) return this.error(client, '이름은 1~16자여야 합니다.');
-    client.name = name;
-    if (Number.isInteger(msg.avatar)) client.avatar = clampInt(msg.avatar, 0, AVATARS.length - 1, client.avatar);
+  /** Bind a signed-in account to this connection and tell everyone the name. */
+  adoptAccount(client, user, token) {
+    client.userId = user.id;
+    client.name = user.username;
+    client.avatar = user.avatar;
+
+    this.send(client, S2C.AUTH, { token, user: this.accounts.selfProfile(user.id) });
     this.send(client, S2C.WELCOME, {
       id: client.id,
       name: client.name,
@@ -263,6 +330,134 @@ export class Hub {
       limits: LIMITS,
       avatars: AVATARS,
       resumed: false,
+      accountsEnabled: true,
+      user: this.accounts.selfProfile(user.id),
+    });
+
+    const room = client.roomId ? this.rooms.get(client.roomId) : null;
+    if (room) {
+      const seat = room.seatOf(client.id);
+      if (seat !== null) {
+        room.seatNames[seat] = client.name;
+        room.seatUsers[seat] = client.userId;
+      }
+      this.broadcastRoom(room);
+    }
+    this.broadcastLobby();
+  }
+
+  async onRegister(client, msg) {
+    if (!this.authReady(client)) return;
+    if (client.userId) return this.send(client, S2C.AUTH_ERROR, { message: '이미 로그인되어 있습니다.' });
+
+    const res = await this.accounts.register({
+      username: msg.username,
+      password: msg.password,
+      avatar: client.avatar,
+    });
+    if (!res.ok) return this.send(client, S2C.AUTH_ERROR, { message: res.error });
+    this.adoptAccount(client, res.user, res.token);
+    this.notice(client, `${res.user.username} 님, 가입을 환영합니다!`, 'good');
+  }
+
+  async onLogin(client, msg) {
+    if (!this.authReady(client)) return;
+    if (client.userId) return this.send(client, S2C.AUTH_ERROR, { message: '이미 로그인되어 있습니다.' });
+
+    // Signing in as someone who is already online would give two players the
+    // same name in the same lobby, so refuse rather than allow the confusion.
+    const key = String(msg.username ?? '').trim().toLowerCase();
+    for (const other of this.clients.values()) {
+      if (other.userId && other !== client && other.name.toLowerCase() === key) {
+        return this.send(client, S2C.AUTH_ERROR, { message: '이미 다른 곳에서 접속 중인 계정입니다.' });
+      }
+    }
+
+    const res = await this.accounts.login({ username: msg.username, password: msg.password });
+    if (!res.ok) return this.send(client, S2C.AUTH_ERROR, { message: res.error });
+    this.adoptAccount(client, res.user, res.token);
+  }
+
+  onLogout(client) {
+    if (!this.accounts) return;
+    if (!client.userId) return;
+    if (client.roomId && this.rooms.get(client.roomId)?.phase === 'playing') {
+      return this.send(client, S2C.AUTH_ERROR, { message: '게임 중에는 로그아웃할 수 없습니다.' });
+    }
+    client.userId = null;
+    client.name = this.pickGuestName(null).name;
+    this.send(client, S2C.AUTH, { token: null, user: null });
+    this.send(client, S2C.WELCOME, {
+      id: client.id,
+      name: client.name,
+      avatar: client.avatar,
+      protocol: PROTOCOL_VERSION,
+      serverNow: Date.now(),
+      games: catalogue(),
+      limits: LIMITS,
+      avatars: AVATARS,
+      resumed: false,
+      accountsEnabled: true,
+      user: null,
+    });
+    this.broadcastLobby();
+  }
+
+  async onChangePassword(client, msg) {
+    if (!this.authReady(client)) return;
+    if (!client.userId) return this.send(client, S2C.AUTH_ERROR, { message: '로그인이 필요합니다.' });
+    const res = await this.accounts.changePassword({
+      userId: client.userId,
+      currentPassword: msg.currentPassword,
+      newPassword: msg.newPassword,
+    });
+    if (!res.ok) return this.send(client, S2C.AUTH_ERROR, { message: res.error });
+    // Every other device was just signed out; this one gets a fresh token.
+    this.send(client, S2C.AUTH, { token: res.token, user: this.accounts.selfProfile(client.userId) });
+    this.notice(client, '비밀번호를 변경했습니다. 다른 기기는 로그아웃됩니다.', 'good');
+  }
+
+  onProfileGet(client, msg) {
+    if (!this.accounts) return this.send(client, S2C.PROFILE, { profile: null });
+    const targetId = typeof msg.userId === 'string' ? msg.userId : client.userId;
+    this.send(client, S2C.PROFILE, { profile: targetId ? this.accounts.publicProfile(targetId) : null });
+  }
+
+  onLeaderboard(client) {
+    if (!this.accounts) return this.send(client, S2C.LEADERBOARD, { rows: [] });
+    this.send(client, S2C.LEADERBOARD, { rows: this.accounts.leaderboard(20) });
+  }
+
+  onPing(client, msg) {
+    // `echo` lets the client compute round-trip time and its clock offset.
+    this.send(client, S2C.PONG, { serverNow: Date.now(), echo: msg.echo ?? null });
+  }
+
+  onProfile(client, msg) {
+    if (Number.isInteger(msg.avatar)) client.avatar = clampInt(msg.avatar, 0, AVATARS.length - 1, client.avatar);
+
+    if (client.userId) {
+      // A signed-in player's display name is their account name — that is what
+      // makes the leaderboard mean anything. Only the avatar is theirs to change.
+      this.accounts?.touch(client.userId, { avatar: client.avatar });
+    } else {
+      const name = sanitizeName(msg.name);
+      if (!name) return this.error(client, '이름은 1~16자여야 합니다.');
+      if (this.accounts?.isNameTaken(name)) return this.error(client, '가입된 계정이 사용 중인 이름입니다.');
+      client.name = name;
+    }
+    this.send(client, S2C.WELCOME, {
+      id: client.id,
+      name: client.name,
+      avatar: client.avatar,
+      protocol: PROTOCOL_VERSION,
+      serverNow: Date.now(),
+      games: catalogue(),
+      limits: LIMITS,
+      avatars: AVATARS,
+      resumed: false,
+      accountsEnabled: Boolean(this.accounts),
+      user: client.userId ? this.accounts.selfProfile(client.userId) : null,
     });
     const room = client.roomId ? this.rooms.get(client.roomId) : null;
     if (room) {
@@ -337,7 +532,13 @@ export class Hub {
 
     const players = [...this.clients.values()]
       .filter((c) => c.name)
-      .map((c) => ({ id: c.id, name: c.name, avatar: c.avatar, inRoom: Boolean(c.roomId) }));
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        avatar: c.avatar,
+        inRoom: Boolean(c.roomId),
+        userId: c.userId || null, // present = a registered account, not a guest
+      }));
 
     return {
       rooms,
@@ -646,6 +847,7 @@ export class Hub {
   onMatchOver(room) {
     const result = room.result;
     if (!result) return;
+    this.recordStats(room, result);
     for (const memberId of room.members()) {
       this.sendTo(memberId, S2C.GAME_OVER, { roomId: room.id, result });
     }
@@ -667,6 +869,28 @@ export class Hub {
     if (report.advanced) {
       if (report.finished) this.finishTournament(tourney);
       else setTimeout(() => this.openTournamentRooms(tourney), 4000);
+    }
+  }
+
+  /**
+   * Credit the result to any signed-in players.
+   *
+   * Only two-human matches count. A match that never had an opponent in the
+   * other seat is not a win worth putting on a leaderboard.
+   */
+  recordStats(room, result) {
+    if (!this.accounts) return;
+    if (!result.users?.some(Boolean)) return;
+    if (!result.names[0] || !result.names[1]) return;
+
+    for (const seat of [0, 1]) {
+      const userId = result.users[seat];
+      if (!userId) continue;
+      const outcome = result.winner === 'draw' ? 'draw' : result.winner === seat ? 'win' : 'loss';
+      this.accounts.recordMatch(userId, room.gameId, outcome);
+      // Push the updated card so the profile panel reflects the game just played.
+      const client = [...this.clients.values()].find((c) => c.userId === userId);
+      if (client) this.send(client, S2C.AUTH, { user: this.accounts.selfProfile(userId) });
     }
   }
 
@@ -858,6 +1082,8 @@ export class Hub {
       rooms: this.rooms.size,
       tournaments: this.tournaments.size,
       games: gameIds().length,
+      accounts: this.accounts ? this.accounts.size : null,
+      signedIn: [...this.clients.values()].filter((c) => c.userId).length,
       stats: this.stats,
     };
   }

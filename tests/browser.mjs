@@ -163,6 +163,39 @@ try {
 
   await a.screenshot({ path: `${SHOTS}/03-online-gomoku.png` });
 
+  /* ── 4b. Accounts ──────────────────────────────────────────────────────── */
+  console.log('\n4b. sign up, persistence, and the leaderboard');
+  const account = `테스터${Date.now().toString(36).slice(-4)}`;
+
+  await a.goto(`${BASE}/#/lobby`, { waitUntil: 'domcontentloaded' });
+  await a.locator('button:has-text("회원가입")').first().click();
+  await a.waitForSelector('.modal', { timeout: 6000 });
+  await a.locator('.modal input[type="text"]').fill(account);
+  await a.locator('.modal input[type="password"]').first().fill('hunter22');
+  await a.locator('.modal input[type="password"]').nth(1).fill('hunter22');
+  await a.locator('.modal button[type="submit"]').click();
+  await a.waitForSelector('#profile-btn.signed-in', { timeout: 8000 });
+  step(`registered and signed in as ${account}`);
+
+  // A reload must not sign you out — the token lives in localStorage.
+  await a.reload({ waitUntil: 'networkidle' });
+  await a.waitForSelector('#profile-btn.signed-in', { timeout: 8000 });
+  const chipName = await a.locator('#profile-btn .profile-name').innerText();
+  if (chipName.trim() !== account) problems.push(`after reload the chip read "${chipName}", expected "${account}"`);
+  step('still signed in after a reload');
+
+  // A guest must not be able to wear a registered name.
+  await b.evaluate((name) => {
+    localStorage.setItem('playhub.profile', JSON.stringify({ name, avatar: 1, sound: false }));
+  }, account);
+  await b.reload({ waitUntil: 'networkidle' });
+  await b.waitForFunction(() => document.querySelector('#conn-chip')?.dataset.state === 'online', { timeout: 10000 });
+  const guestName = await b.locator('#profile-btn .profile-name').innerText();
+  if (guestName.trim() === account) problems.push('a guest was allowed to take a registered name');
+  else step(`guest asking for "${account}" got "${guestName.trim()}" instead`);
+
+  await a.screenshot({ path: `${SHOTS}/07-signed-in.png` });
+
   /* ── 5. Chat ───────────────────────────────────────────────────────────── */
   console.log('\n5. room chat');
   await a.locator('.chat-form input').fill('안녕하세요!');

@@ -28,6 +28,7 @@ export class Room {
 
     this.seats = [null, null]; // client ids
     this.seatNames = [null, null]; // kept after a disconnect so results stay readable
+    this.seatUsers = [null, null]; // account ids, for recording stats after the match
     this.spectators = new Set();
     this.ready = [false, false];
     this.rematchVotes = new Set();
@@ -75,6 +76,7 @@ export class Room {
       if (free !== -1) {
         this.seats[free] = client.id;
         this.seatNames[free] = client.name;
+        this.seatUsers[free] = client.userId ?? null;
         this.absentSince[free] = null;
         return { ok: true, role: 'player', seat: free };
       }
@@ -114,6 +116,7 @@ export class Room {
     if (seat === -1) return null;
     this.absentSince[seat] = null;
     this.seatNames[seat] = client.name;
+    this.seatUsers[seat] = client.userId ?? this.seatUsers[seat];
     return seat;
   }
 
@@ -192,6 +195,7 @@ export class Room {
       scores: st.scores || [0, 0],
       names: [...this.seatNames],
       seats: [...this.seats],
+      users: [...this.seatUsers],
       durationMs: this.startedAt ? now - this.startedAt : 0,
     };
     // A seat abandoned mid-match is released now that the result is locked in.

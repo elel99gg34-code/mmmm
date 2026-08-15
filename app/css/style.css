@@ -334,6 +334,22 @@ ol {
   background: var(--bad);
 }
 
+/* A signed-in player is marked so the chip and the leaderboard agree on who
+   you are; guests stay visually plain. */
+.profile-chip.signed-in {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+}
+
+.profile-chip.signed-in .profile-avatar::after {
+  content: '✓';
+  font-size: 9px;
+  color: var(--good);
+  vertical-align: super;
+  margin-left: 1px;
+}
+
 .profile-avatar {
   font-size: 15px;
 }

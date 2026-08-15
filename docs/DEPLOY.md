@@ -158,6 +158,31 @@ ALLOWED_ORIGINS=https://<사용자이름>.github.io
 
 ---
 
+## 계정 데이터 보관하기 (중요)
+
+서버는 계정을 `DATA_DIR/accounts.json` (기본 `./data/accounts.json`) 한 파일에 보관합니다.
+데이터베이스가 없어서 설치가 간단한 대신, **호스팅의 디스크가 초기화되면 계정도 사라집니다.**
+
+| 호스팅 | 기본 상태 | 계정을 지키려면 |
+|---|---|---|
+| Render 무료 | 재배포·재시작마다 초기화 | Persistent Disk(유료)를 붙이고 `DATA_DIR=/var/data` 지정 |
+| Render 유료 + Disk | 유지됨 | `DATA_DIR`을 디스크 마운트 경로로 |
+| Fly.io | 볼륨 없으면 초기화 | `fly volumes create playhub_data --size 1` 후 `fly.toml`의 `[mounts]` 주석 해제 |
+| Railway | Volume 없으면 초기화 | Volume을 붙이고 `DATA_DIR` 지정 |
+| Docker | 컨테이너와 함께 사라짐 | `-v playhub-data:/app/data` |
+
+세션 토큰 서명 키(`AUTH_SECRET`)도 함께 신경 써야 합니다. 지정하지 않으면 첫 실행 때
+만들어 데이터 파일에 저장하는데, 파일이 초기화되면 키도 바뀌어 **모두가 로그아웃**됩니다.
+디스크가 사라질 수 있는 곳이라면 환경 변수로 직접 넣어 두세요.
+
+```bash
+# 아무 긴 무작위 문자열이면 됩니다
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+계정 기능이 필요 없다면 `ACCOUNTS=0` 으로 손님 전용 서버가 됩니다. 저장할 것이 없으니
+디스크 고민도 사라집니다.
+
 ## 서버 사양
 
 작습니다. 인스턴스 하나에서:

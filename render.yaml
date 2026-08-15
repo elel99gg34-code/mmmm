@@ -28,3 +28,15 @@ services:
       #   https://<user>.github.io
       - key: ALLOWED_ORIGINS
         sync: false
+      # Signs the login tokens. Generated on first run if unset, but the free
+      # plan's disk resets on every deploy — which would log everybody out —
+      # so Render generates a stable one for you here instead.
+      - key: AUTH_SECRET
+        generateValue: true
+      # The free plan has no persistent disk, so accounts live only until the
+      # next deploy. To keep them: add a Disk in the Render dashboard, then set
+      # DATA_DIR here to its mount path (e.g. /var/data). Left unset on purpose
+      # — pointing it at a path with no disk behind it would look like it
+      # worked while quietly losing every account.
+      # - key: DATA_DIR
+      #   value: /var/data

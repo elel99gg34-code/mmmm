@@ -21,6 +21,13 @@ export const store = {
   avatars: [],
   limits: null,
 
+  /* Account (null while playing as a guest) */
+  user: null, // { id, username, avatar, stats, authenticated }
+  accountsEnabled: false,
+  authError: '',
+  leaderboard: [],
+  viewedProfile: null,
+
   /* Catalogue */
   games: [],
 

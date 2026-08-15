@@ -11,6 +11,7 @@ import { api, isOnline } from '../net.js';
 import { catalogue, getGame } from '../../../shared/games/index.js';
 import { navigate } from '../router.js';
 import { openServerDialog } from './server.js';
+import { leaderboardPanel, openProfileDialog, openAuthDialog } from './account.js';
 import { sanitizeChat } from '../../../shared/protocol.js';
 
 export function renderLobby(root) {
@@ -47,6 +48,9 @@ export function renderLobby(root) {
     [chatInput, el('button.btn.sm.primary', { type: 'submit' }, '전송')],
   );
 
+  const ranking = leaderboardPanel();
+  const bannerSlot = el('div');
+
   mount(root, [
     el('div.page-head', {}, [
       el('div', {}, [
@@ -58,6 +62,7 @@ export function renderLobby(root) {
         el('button.btn.primary', { type: 'button', onClick: openCreateRoom }, '＋ 방 만들기'),
       ]),
     ]),
+    bannerSlot,
     queueBox,
     el('div.lobby-grid', {}, [
       el('section', {}, [
@@ -74,6 +79,7 @@ export function renderLobby(root) {
           ])),
           el('div.card-pad', { style: { paddingTop: '6px' } }, playerList),
         ]),
+        ranking.node,
         el('div.card.chat', {}, [
           el('div.card-pad', { style: { paddingBottom: 0 } }, el('h2', { style: { fontSize: '15px' } }, '로비 채팅')),
           chatLog,
@@ -140,16 +146,32 @@ export function renderLobby(root) {
     }
     mount(
       playerList,
-      players.map((player) =>
-        el(`div.player-row${player.inRoom ? '.busy' : ''}`, {}, [
-          el('span', { text: store.avatars[player.avatar] || '👤' }),
-          el('span', {
-            text: `${player.name}${player.id === store.me?.id ? ' (나)' : ''}`,
-            style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-          }),
-          el('span.dot'),
-        ]),
-      ),
+      players.map((player) => {
+        const registered = Boolean(player.userId);
+        const label = `${player.name}${player.id === store.me?.id ? ' (나)' : ''}`;
+        return el(
+          `${registered ? 'button' : 'div'}.player-row${player.inRoom ? '.busy' : ''}`,
+          {
+            type: registered ? 'button' : undefined,
+            title: registered ? `${player.name} 전적 보기` : '손님',
+            style: registered
+              ? { width: '100%', border: 0, background: 'transparent', textAlign: 'left' }
+              : undefined,
+            onClick: registered ? () => openProfileDialog(player.userId) : undefined,
+          },
+          [
+            el('span', { text: store.avatars[player.avatar] || '👤' }),
+            el('span', {
+              text: label,
+              style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+            }),
+            // A quiet mark, so you can tell a registered name from a guest
+            // wearing something similar.
+            registered ? el('span', { style: { fontSize: '11px', opacity: '0.75' }, text: '✓' }) : null,
+            el('span.dot'),
+          ],
+        );
+      }),
     );
   }
 
@@ -189,6 +211,41 @@ export function renderLobby(root) {
     );
   }
 
+  /** A one-line nudge for guests. Signed-in players never see it. */
+  function paintBanner() {
+    if (store.user || !store.accountsEnabled) {
+      mount(bannerSlot, null);
+      return;
+    }
+    mount(
+      bannerSlot,
+      el(
+        'div.card.card-pad',
+        {
+          style: {
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            borderColor: 'color-mix(in srgb, var(--accent) 34%, transparent)',
+          },
+        },
+        [
+          el('span', { style: { fontSize: '20px' } }, '👋'),
+          el('div', { style: { flex: '1', minWidth: '200px' } }, [
+            el('strong', {}, '손님으로 놀고 있습니다'),
+            el('div.field-hint', {}, '가입하면 이름을 지키고, 전적과 순위가 계속 쌓입니다. 게임은 지금도 전부 됩니다.'),
+          ]),
+          el('div.btn-row', {}, [
+            el('button.btn.sm', { type: 'button', onClick: () => openAuthDialog('login') }, '로그인'),
+            el('button.btn.sm.primary', { type: 'button', onClick: () => openAuthDialog('register') }, '회원가입'),
+          ]),
+        ],
+      ),
+    );
+  }
+
   function paintAll() {
     paintRooms();
     paintPlayers();
@@ -196,10 +253,13 @@ export function renderLobby(root) {
   }
 
   paintAll();
+  paintBanner();
   paintChat();
 
   const unsubscribe = [
+    ranking.stop,
     subscribe(['lobby', 'queue'], paintAll),
+    subscribe(['user', 'accountsEnabled'], paintBanner),
     subscribe('lobbyChat', paintChat),
     subscribe('room', () => {
       // The server dropped us into a room (quick match, or a tournament).

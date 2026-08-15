@@ -16,6 +16,14 @@ primary_region = "nrt"   # Tokyo — closest region for Korean players
   PORT = "8080"
   HOST = "0.0.0.0"
   LOG_LEVEL = "info"
+  DATA_DIR = "/data"
+
+# Accounts live on disk, so without a volume every redeploy wipes them.
+#   fly volumes create playhub_data --size 1
+# then uncomment:
+# [mounts]
+#   source = "playhub_data"
+#   destination = "/data"
 
 [http_service]
   internal_port = 8080

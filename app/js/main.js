@@ -27,6 +27,7 @@ import { renderRoom } from './views/room.js';
 import { renderTournaments } from './views/tournaments.js';
 import { renderHelp } from './views/help.js';
 import { openServerDialog } from './views/server.js';
+import { accountCard, openAuthDialog } from './views/account.js';
 
 /* ── Theme ────────────────────────────────────────────────────────────────── */
 
@@ -43,19 +44,25 @@ let profile = loadProfile();
 function paintProfileChip() {
   const button = document.getElementById('profile-btn');
   if (!button) return;
-  const name = store.me?.name || profile.name || '손님';
-  const avatar = AVATARS[store.me?.avatar ?? profile.avatar] || AVATARS[0];
+  const signedIn = Boolean(store.user);
+  const name = store.user?.username || store.me?.name || profile.name || '손님';
+  const avatar = AVATARS[store.user?.avatar ?? store.me?.avatar ?? profile.avatar] || AVATARS[0];
   button.querySelector('.profile-avatar').textContent = avatar;
   button.querySelector('.profile-name').textContent = name;
+  // A signed-in player is marked so the leaderboard name and the chip agree.
+  button.classList.toggle('signed-in', signedIn);
+  button.title = signedIn ? `${name} (로그인됨)` : '손님으로 이용 중 — 눌러서 로그인';
 }
 
 function openProfileDialog() {
-  let avatar = store.me?.avatar ?? profile.avatar;
+  let avatar = store.user?.avatar ?? store.me?.avatar ?? profile.avatar;
+  const signedIn = Boolean(store.user);
   const nameInput = el('input.input', {
     type: 'text',
     maxlength: '16',
-    value: store.me?.name || profile.name || '',
+    value: store.user?.username || store.me?.name || profile.name || '',
     placeholder: '이름을 입력하세요',
+    disabled: signedIn,
   });
 
   const grid = el('div', {
@@ -92,7 +99,15 @@ function openProfileDialog() {
   const close = modal({
     title: '프로필',
     body: [
-      el('div.field', {}, [el('label', {}, '이름'), nameInput]),
+      accountCard(),
+      el('div.divider'),
+      el('div.field', {}, [
+        el('label', {}, '이름'),
+        nameInput,
+        signedIn
+          ? el('span.field-hint', {}, '로그인 중에는 계정 아이디가 이름이 됩니다.')
+          : el('span.field-hint', {}, '가입된 계정의 아이디는 쓸 수 없습니다.'),
+      ]),
       el('div.field', {}, [el('label', {}, '아바타'), grid]),
       el('div.field', {}, [
         el('label', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
@@ -115,11 +130,12 @@ function openProfileDialog() {
         {
           type: 'button',
           onClick: () => {
-            const name = sanitizeName(nameInput.value) || '';
-            profile = { name, avatar, sound: soundToggle.checked };
+            // A signed-in player's name belongs to the account, not this form.
+            const name = signedIn ? store.user.username : sanitizeName(nameInput.value) || '';
+            profile = { name: signedIn ? profile.name : name, avatar, sound: soundToggle.checked };
             saveProfile(profile);
             sound.setEnabled(profile.sound);
-            if (isOnline() && name) api.setProfile(name, avatar);
+            if (isOnline() && (signedIn || name)) api.setProfile(name, avatar);
             else paintProfileChip();
             toast('프로필을 저장했습니다.', 'good');
             close();
@@ -178,7 +194,7 @@ function boot() {
   route('/help', renderHelp, 'help');
 
   subscribe(['connection', 'lobby', 'serverUrl', 'serverError'], paintConnection);
-  subscribe('me', paintProfileChip);
+  subscribe(['me', 'user'], paintProfileChip);
   subscribe('connection', (state, changed) => {
     if (!changed.includes('connection')) return;
     // Pages that look different online than offline re-render on change.

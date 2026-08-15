@@ -7,7 +7,7 @@
  */
 import { C2S, S2C } from '../../shared/protocol.js';
 import { store, setState } from './store.js';
-import { loadSession, saveSession, loadProfile } from './config.js';
+import { loadSession, saveSession, loadProfile, loadAuthToken, saveAuthToken } from './config.js';
 import { toast } from './ui.js';
 import { sound } from './sound.js';
 
@@ -85,7 +85,7 @@ export function disconnect() {
   wanted = false;
   clearTimeout(reconnectTimer);
   teardown();
-  setState({ connection: 'offline', room: null, tournament: null, queue: null });
+  setState({ connection: 'offline', room: null, tournament: null, queue: null, user: null, leaderboard: [] });
 }
 
 function teardown() {
@@ -106,7 +106,12 @@ function teardown() {
 function onOpen() {
   attempts = 0;
   const profile = loadProfile();
-  send(C2S.HELLO, { name: profile.name || undefined, avatar: profile.avatar, resume: loadSession() || undefined });
+  send(C2S.HELLO, {
+    name: profile.name || undefined,
+    avatar: profile.avatar,
+    resume: loadSession() || undefined,
+    token: loadAuthToken(targetUrl) || undefined,
+  });
   clearInterval(pingTimer);
   pingTimer = setInterval(ping, PING_INTERVAL_MS);
   ping();
@@ -153,6 +158,12 @@ function route(msg) {
   switch (msg.t) {
     case S2C.WELCOME: {
       saveSession(msg.id);
+      // A token the server refused is dead weight; drop it so the UI offers
+      // the login form instead of pretending we are still signed in.
+      if (msg.tokenRejected) {
+        saveAuthToken(store.serverUrl, '');
+        toast('로그인이 만료되었습니다. 다시 로그인해 주세요.', 'bad');
+      }
       setState({
         connection: 'online',
         serverError: '',
@@ -161,11 +172,34 @@ function route(msg) {
         avatars: msg.avatars || store.avatars,
         limits: msg.limits || store.limits,
         clockOffset: msg.serverNow - Date.now(),
+        accountsEnabled: Boolean(msg.accountsEnabled),
+        user: msg.user ?? null,
       });
       send(C2S.LOBBY_SUB);
+      if (msg.accountsEnabled) send(C2S.LEADERBOARD);
       if (msg.resumed) toast('이전 게임에 다시 연결했습니다.', 'good');
       break;
     }
+
+    case S2C.AUTH: {
+      // `token` is absent on a stats refresh and null on an explicit logout.
+      if (msg.token !== undefined) saveAuthToken(store.serverUrl, msg.token || '');
+      setState({ user: msg.user ?? null, authError: '' });
+      if (msg.user) send(C2S.LEADERBOARD);
+      break;
+    }
+
+    case S2C.AUTH_ERROR:
+      setState({ authError: msg.message });
+      break;
+
+    case S2C.PROFILE:
+      setState({ viewedProfile: msg.profile ?? null });
+      break;
+
+    case S2C.LEADERBOARD:
+      setState({ leaderboard: msg.rows || [] });
+      break;
 
     case S2C.PONG: {
       if (typeof msg.echo === 'number') {
@@ -253,6 +287,13 @@ function route(msg) {
 export const api = {
   setProfile: (name, avatar) => send(C2S.PROFILE, { name, avatar }),
   chat: (text, scope = 'lobby') => send(C2S.CHAT, { text, scope }),
+
+  register: (username, password) => send(C2S.AUTH_REGISTER, { username, password }),
+  login: (username, password) => send(C2S.AUTH_LOGIN, { username, password }),
+  logout: () => send(C2S.AUTH_LOGOUT),
+  changePassword: (currentPassword, newPassword) => send(C2S.AUTH_PASSWORD, { currentPassword, newPassword }),
+  getProfile: (userId) => send(C2S.PROFILE_GET, { userId }),
+  getLeaderboard: () => send(C2S.LEADERBOARD),
 
   createRoom: (gameId, options = {}) => send(C2S.ROOM_CREATE, { gameId, ...options }),
   joinRoom: (roomId, options = {}) => send(C2S.ROOM_JOIN, { roomId, ...options }),

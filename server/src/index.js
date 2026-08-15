@@ -14,6 +14,11 @@
  *   SERVE_STATIC      "0" to disable the static file server
  *   ALLOWED_ORIGINS   comma-separated allow-list for WebSocket origins
  *   LOG_LEVEL         debug | info | warn | error
+ *   ACCOUNTS          "0" to run a guests-only server with no sign-in
+ *   DATA_DIR          where accounts.json lives (default ./data)
+ *   AUTH_SECRET       HMAC key for session tokens; generated and stored in
+ *                     DATA_DIR when unset. Set it on hosts with an ephemeral
+ *                     disk so sessions survive a redeploy.
  */
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +26,7 @@ import { dirname, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 
 import { Hub } from './hub.js';
+import { Accounts } from './accounts.js';
 import { serveStatic } from './static.js';
 import { log } from './util.js';
 import { catalogue } from '../../shared/games/index.js';
@@ -35,8 +41,12 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+const ACCOUNTS_ENABLED = process.env.ACCOUNTS !== '0';
 
-const hub = new Hub();
+// Accounts are optional: a server can run guests-only and still do everything
+// except remember who you are between visits.
+const accounts = ACCOUNTS_ENABLED ? await new Accounts().load() : null;
+const hub = new Hub({ accounts });
 
 /** Origin allow-list. Empty list means "any origin", the default for a public hub. */
 function originAllowed(origin) {
@@ -118,12 +128,15 @@ server.listen(PORT, HOST, () => {
   log.info(`  websocket   ws://${HOST}:${PORT}/ws`);
   log.info(`  static      ${SERVE_STATIC ? WEB_ROOT : 'disabled'}`);
   log.info(`  origins     ${ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS.join(', ') : 'any'}`);
+  log.info(`  accounts    ${accounts ? `${accounts.size} registered (${accounts.file})` : 'disabled'}`);
 });
 
 function shutdown(signal) {
   log.info(`${signal} received — shutting down`);
   clearInterval(heartbeat);
   hub.stop();
+  // Flush any debounced account writes before the process goes away.
+  accounts?.close().catch((err) => log.error('accounts flush failed', { err: String(err) }));
   for (const ws of wss.clients) {
     try {
       ws.close(1001, 'server shutting down');
@@ -140,4 +153,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('unhandledRejection', (err) => log.error('unhandled rejection', { err: String(err) }));
 
-export { hub, server, wss };
+export { hub, server, wss, accounts };

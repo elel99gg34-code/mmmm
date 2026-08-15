@@ -13,6 +13,13 @@ export const C2S = {
   PING: 'ping',
   PROFILE: 'profile',
 
+  AUTH_REGISTER: 'auth.register',
+  AUTH_LOGIN: 'auth.login',
+  AUTH_LOGOUT: 'auth.logout',
+  AUTH_PASSWORD: 'auth.password',
+  PROFILE_GET: 'profile.get',
+  LEADERBOARD: 'leaderboard.get',
+
   LOBBY_SUB: 'lobby.subscribe',
   LOBBY_UNSUB: 'lobby.unsubscribe',
   CHAT: 'chat.send',
@@ -45,6 +52,11 @@ export const S2C = {
   ERROR: 'error',
   NOTICE: 'notice',
 
+  AUTH: 'auth.state',
+  AUTH_ERROR: 'auth.error',
+  PROFILE: 'profile.data',
+  LEADERBOARD: 'leaderboard.data',
+
   LOBBY: 'lobby.state',
   CHAT: 'chat.msg',
   PRESENCE: 'presence',
@@ -72,7 +84,29 @@ export const LIMITS = {
   maxRoomsPerClient: 1,
   maxSpectators: 30,
   tournamentSizes: [4, 8, 16],
+  usernameMin: 2,
+  usernameMax: 16,
+  passwordMin: 6,
 };
+
+/** Same rule the server enforces, so the form can complain before sending. */
+export const USERNAME_PATTERN = /^[\p{L}\p{N}_-]+$/u;
+
+/** Client-side mirror of the server's username check. Returns an error or null. */
+export function checkUsername(raw) {
+  const name = String(raw ?? '').trim();
+  if (name.length < LIMITS.usernameMin) return `아이디는 ${LIMITS.usernameMin}자 이상이어야 합니다.`;
+  if (name.length > LIMITS.usernameMax) return `아이디는 ${LIMITS.usernameMax}자 이하여야 합니다.`;
+  if (!USERNAME_PATTERN.test(name)) return '아이디에는 한글·영문·숫자·밑줄·하이픈만 쓸 수 있습니다.';
+  return null;
+}
+
+/** Client-side mirror of the server's password check. */
+export function checkPassword(raw) {
+  const password = String(raw ?? '');
+  if (password.length < LIMITS.passwordMin) return `비밀번호는 ${LIMITS.passwordMin}자 이상이어야 합니다.`;
+  return null;
+}
 
 /** Avatars a player can pick. Index is what travels on the wire. */
 export const AVATARS = ['🦊', '🐼', '🐧', '🐙', '🦁', '🐸', '🦉', '🐯', '🐨', '🦈', '🐺', '🦄', '🐳', '🦅', '🐝', '🐢'];
