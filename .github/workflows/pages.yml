@@ -55,6 +55,13 @@ jobs:
           cp -r shared _site/
           # A 404 that serves the app keeps deep links working on Pages.
           cp index.html _site/404.html
+          # Pages reads the custom domain from a CNAME file inside the published
+          # artifact. Without this copy every deploy silently clears
+          # Settings → Pages → Custom domain and the site stops answering there.
+          if [ -f CNAME ]; then
+            cp CNAME _site/
+            echo "Custom domain: $(cat CNAME)"
+          fi
           echo "Staged $(find _site -type f | wc -l) files"
 
       # This is the one step that needs a human first. Without Pages enabled it
