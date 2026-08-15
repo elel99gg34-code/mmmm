@@ -21,8 +21,8 @@
 로컬에서 전부(웹 + 온라인) 한 번에 실행하려면:
 
 ```bash
-git clone https://github.com/elel99gg34-code/mmmm.git
-cd mmmm
+git clone https://github.com/elel99gg34-code/playhub.git
+cd playhub
 npm install
 npm start
 # http://localhost:8080 접속 — 웹과 서버가 같은 주소에서 함께 뜹니다
@@ -185,7 +185,7 @@ npm run test:browser   # 실제 크로미움 2개로 온라인 대국까지 검�
 - **온라인 대전까지** — Render / Fly.io / Railway / Docker 중 아무거나. 설정 파일이
   전부 들어 있습니다. 자세한 절차는 **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
-  [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/elel99gg34-code/mmmm)
+  [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/elel99gg34-code/playhub)
 
   이 버튼을 누르면 Render가 저장소의 `render.yaml`을 읽어 서버를 띄웁니다. 무료 플랜은
   디스크가 재배포마다 초기화되므로, **계정을 계속 유지하려면 Persistent Disk를 붙이고

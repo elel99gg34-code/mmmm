@@ -30,7 +30,7 @@ PlayHub는 두 조각으로 나뉩니다.
 https://<사용자이름>.github.io/<저장소이름>/
 ```
 
-이 저장소라면 `https://elel99gg34-code.github.io/mmmm/` 입니다.
+이 저장소라면 `https://elel99gg34-code.github.io/playhub/` 입니다.
 
 > **빌드 단계가 없습니다.** 클라이언트는 순수 ES 모듈이고 `shared/`의 규칙 엔진을
 > 그대로 import합니다. 워크플로는 `index.html`, `app/`, `shared/`를 그대로 복사할 뿐입니다.
