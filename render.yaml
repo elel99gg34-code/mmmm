@@ -13,7 +13,10 @@ services:
     name: playhub
     runtime: node
     plan: free
-    region: oregon
+    # Closest region to Korean players. Every move in a turn-based game is a
+    # round trip, and Singapore is roughly half Oregon's latency from Seoul —
+    # in 반응속도 결투 that difference is the whole game.
+    region: singapore
     buildCommand: npm install --omit=dev
     startCommand: node server/src/index.js
     healthCheckPath: /healthz
