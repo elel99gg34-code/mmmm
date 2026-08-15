@@ -37,23 +37,38 @@ https://<사용자이름>.github.io/<저장소이름>/
 
 이제 접속한 사람은 15가지 게임을 **컴퓨터와** 또는 **한 기기에서 둘이** 즐길 수 있습니다.
 
-### 사용자 지정 도메인 쓰기
+### 주소를 더 예쁘게 (도메인 없이, 무료)
 
-저장소 루트의 `CNAME` 파일에 쓰인 도메인이 Pages의 사용자 지정 도메인이 됩니다.
-현재 값은 `www.playinjhub.com` 입니다.
+기본 주소는 `https://<사용자이름>.github.io/<저장소이름>/` 입니다. 저장소 이름이 곧
+주소이므로, **저장소 이름을 바꾸는 것이 가장 싸고 빠른 개선**입니다.
+
+```
+Settings → Repository name → playhub
+→ https://<사용자이름>.github.io/playhub/
+```
+
+코드는 전부 상대 경로라 경로가 바뀌어도 그대로 동작합니다. 서비스도, DNS도, 비용도
+필요 없습니다.
+
+### 사용자 지정 도메인 쓰기 (선택)
+
+저장소 루트에 `CNAME` 파일을 만들고 도메인 한 줄만 적으면 됩니다.
+
+```
+www.example.com
+```
 
 **주의 — 이 파일이 배포 산출물에 포함되어야 합니다.** Pages는 저장소가 아니라
-발행된 산출물 안의 `CNAME`을 읽습니다. 워크플로가 이 파일을 복사하도록 되어 있으니
-그대로 두시면 됩니다. (복사하지 않으면 배포할 때마다 사용자 지정 도메인 설정이
-저절로 풀립니다.)
+발행된 산출물 안의 `CNAME`을 읽습니다. 워크플로가 이미 복사하도록 되어 있습니다.
+(복사하지 않으면 배포할 때마다 사용자 지정 도메인 설정이 저절로 풀립니다.)
 
 도메인을 산 곳(등록기관)의 DNS에 아래 레코드를 넣습니다.
 
 | 종류 | 이름(호스트) | 값 |
 |---|---|---|
-| `CNAME` | `www` | `elel99gg34-code.github.io.` |
+| `CNAME` | `www` | `<사용자이름>.github.io.` |
 
-apex 도메인(`playinjhub.com`, www 없이)으로도 들어오게 하려면 A/AAAA 레코드를 함께 넣습니다.
+apex 도메인(`example.com`, www 없이)으로도 들어오게 하려면 A/AAAA 레코드를 함께 넣습니다.
 GitHub이 안내하는 주소는 바뀔 수 있으니 최종 확인은
 [GitHub 문서](https://docs.github.com/pages/configuring-a-custom-domain-for-your-github-pages-site)에서 하세요.
 
@@ -65,12 +80,15 @@ GitHub이 안내하는 주소는 바뀔 수 있으니 최종 확인은
 DNS가 퍼진 뒤(보통 몇 분~몇 시간) **Settings → Pages → Enforce HTTPS**를 켜세요.
 인증서는 GitHub이 무료로 발급합니다.
 
-> 확인: `CNAME` 파일의 철자가 실제로 등록한 도메인과 정확히 같아야 합니다.
-> 한 글자만 달라도 사이트는 조용히 404가 되고, 원인이 잘 드러나지 않습니다.
+> ⚠️ **DNS를 먼저 걸고 CNAME을 나중에 올리세요.** 순서가 반대면, 도메인이 아직
+> 응답하지 않는 동안 Pages가 기본 주소(`github.io`)로 온 요청을 그 도메인으로
+> **301(영구) 리다이렉트**합니다. 브라우저는 301을 오래 캐시하기 때문에, 나중에
+> 설정을 지워도 그 브라우저에서는 계속 죽은 도메인으로 튕깁니다. 시크릿 창에서
+> 열어 보면 바로 확인됩니다.
 
 **서버도 같은 도메인 아래에 두면 깔끔합니다.** 게임 서버를 배포한 뒤
-`play.playinjhub.com` 같은 서브도메인을 CNAME으로 붙이면
-`DEFAULT_SERVER`가 호스팅 업체 주소에 묶이지 않습니다.
+`play.example.com` 같은 서브도메인을 CNAME으로 붙이면 `DEFAULT_SERVER`가
+호스팅 업체 주소에 묶이지 않습니다.
 
 | 종류 | 이름 | 값 |
 |---|---|---|
@@ -78,7 +96,7 @@ DNS가 퍼진 뒤(보통 몇 분~몇 시간) **Settings → Pages → Enforce HT
 
 ```js
 // app/js/config.js
-export const DEFAULT_SERVER = 'wss://play.playinjhub.com/ws';
+export const DEFAULT_SERVER = 'wss://play.example.com/ws';
 ```
 
 ---
